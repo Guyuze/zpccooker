@@ -3,8 +3,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import time
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+
+# 测试训练时间
+start_time = time.time()
 
 # 检查GPU可用性
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -31,23 +35,30 @@ movie_id_to_title = dict(zip(movies_metadata['movieId'], movies_metadata['title'
 # 超参数设置
 num_users = int(max(user_ids)) + 1
 num_movies = int(max(movie_ids)) + 1
-embedding_dim = 32   #嵌入维度，用于表示用户和电影的向量表示的维度大小
-hidden_dim = 32    #隐藏层维度，用于神经网络模型中隐藏层的大小
-learning_rate = 0.001  #学习率，用于控制模型在训练过程中参数更新的速度
-num_epochs = 20   #训练轮数，表示模型在整个训练集上的训练次数
-batch_size = 128  #批量大小，用于指定每个训练批次的样本数量
+embedding_dim = 32   # 嵌入维度，用于表示用户和电影的向量表示的维度大小
+hidden_dim = 32    # 隐藏层维度，用于神经网络模型中隐藏层的大小
+learning_rate = 0.001  # 学习率，用于控制模型在训练过程中参数更新的速度
+num_epochs = 20   # 训练轮数，表示模型在整个训练集上的训练次数
+batch_size = 128  # 批量大小，用于指定每个训练批次的样本数量
 
+print("----MOVIE RECOMMEND----")
+user_id = int(input("please input your userid(1-610)："))
+print("----BEGIN TRAINING----")
 
 # 构建模型
 class Recommender(nn.Module):
     def __init__(self, num_users, num_movies, embedding_dim, hidden_dim):
         super(Recommender, self).__init__()
+        # 嵌入层构建
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.movie_embedding = nn.Embedding(num_movies, embedding_dim)
+        # 全连接层构建
         self.fc1 = nn.Linear(2 * embedding_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, 1)
+        #ReLU激活函数，增加了模型的非线性能力
         self.relu = nn.ReLU()
 
+    # 前向传播
     def forward(self, inputs):
         user_idx = inputs[:, 0]
         movie_idx = inputs[:, 1]
@@ -79,37 +90,42 @@ for epoch in range(num_epochs):
     running_loss = 0.0
 
     for i in range(0, len(X_train), batch_size):
-        inputs = X_train[i:i + batch_size]
-        targets = y_train[i:i + batch_size]
+        inputs = X_train[i:i + batch_size] # 从训练集中获取当前批次的输入
+        targets = y_train[i:i + batch_size] # 从训练集中获取当前批次的目标输出
 
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
+        optimizer.zero_grad()  # 将优化器的梯度缓冲区清零，以准备进行反向传播
+        outputs = model(inputs) # 通过向前传递输入数据，获取模型的输出
+        loss = criterion(outputs, targets) # 计算模型输出与目标输出之间的损失
 
         running_loss += loss.item()
 
-        loss.backward()
-        optimizer.step()
+        loss.backward() # 执行反向传播，计算参数的梯度
+        optimizer.step() # 根据计算得到的梯度，更新模型的参数
 
-    train_rmse = np.sqrt(running_loss / len(X_train))
+    train_rmse = np.sqrt(running_loss / len(X_train)) # 计算训练集上的均方根误差（RMSE），用于评估模型在训练集上的性能
 
     # 在测试集上进行评估
     model.eval()
     with torch.no_grad():
-        outputs = model(X_test)
-        test_loss = criterion(outputs, y_test)
+        outputs = model(X_test) # 通过向前传递测试集的输入数据，获取模型在测试集上的输出
+        test_loss = criterion(outputs, y_test) # 计算模型在测试集上的输出与真实标签之间的损失
         test_rmse = np.sqrt(test_loss.item() / len(X_test))
 
-    print(f'Epoch {epoch + 1}/{num_epochs} | Train RMSE: {train_rmse:.4f} | Test RMSE: {test_rmse:.4f} | Test lose: {test_loss:.4f}')
+    print(f'Epoch {epoch + 1}/{num_epochs} | Train RMSE: {train_rmse:.4f} | Test RMSE: {test_rmse:.4f} | Test lose: {test_loss:.4f}') # 监控训练过程中模型的性能表现
+
+# 计算训练时长
+end_time = time.time()
+execution_time = end_time - start_time
+print(f'Execution Time: {execution_time:.2f} seconds')
+print()
 
 # 生成推荐
 user_ids = torch.LongTensor(user_ids).to(device)
 movie_ids = torch.LongTensor(movie_ids).to(device)
 recommendations = model(torch.column_stack((user_ids, movie_ids))).detach().cpu().numpy()
 
-# 打印某个用户的前几个推荐电影
-user_id = 1
-top_k = 20
+# 打印某个用户的前十个推荐电影
+top_k = 10
 user_recommendations = recommendations[user_ids.cpu() == user_id]
 top_movies = np.argsort(user_recommendations)[-top_k:][::-1]
 print(f'Top {top_k} recommendations for User {user_id}:')
