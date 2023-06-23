@@ -132,4 +132,3 @@ print(f'Top {top_k} recommendations for User {user_id}:')
 for movie_id in top_movies:
     movie_title = movie_id_to_title.get(unique_movie_ids[movie_id])
     print(f'Movie Title: {movie_title} | Rating: {user_recommendations[movie_id]:.2f}')
-# 测试github链接
