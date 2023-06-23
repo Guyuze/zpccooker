@@ -38,7 +38,7 @@ num_movies = int(max(movie_ids)) + 1
 embedding_dim = 32   # 嵌入维度，用于表示用户和电影的向量表示的维度大小
 hidden_dim = 32    # 隐藏层维度，用于神经网络模型中隐藏层的大小
 learning_rate = 0.001  # 学习率，用于控制模型在训练过程中参数更新的速度
-num_epochs = 20   # 训练轮数，表示模型在整个训练集上的训练次数
+num_epochs = 2   # 训练轮数，表示模型在整个训练集上的训练次数
 batch_size = 128  # 批量大小，用于指定每个训练批次的样本数量
 
 print("----MOVIE RECOMMEND----")
@@ -51,13 +51,13 @@ def check():
             user_id = int(input())
             if 0 < user_id < num_users:
                 print("输入的id有效！")
-                break
+                return user_id
             else:
                 print("请输入正确的id！")
         except ValueError as err:
             print("请输入正确的id！")
 
-check()
+user_id=check()
 print("----BEGIN TRAINING----")
 
 # 构建模型
