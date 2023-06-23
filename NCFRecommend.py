@@ -6,7 +6,7 @@ import numpy as np
 import time
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-
+import matplotlib.pyplot as plt
 # 测试训练时间
 start_time = time.time()
 
@@ -23,6 +23,9 @@ user_ids = data[:, 0]
 movie_ids = data[:, 1]
 ratings = data[:, 2]
 
+# 画图
+linex = []
+liney = []
 # 数据集划分为训练集和测试集
 X_train, X_test, y_train, y_test = train_test_split(
     np.column_stack((user_ids, movie_ids)), ratings, test_size=0.2, random_state=42
@@ -35,12 +38,15 @@ movie_id_to_title = dict(zip(movies_metadata['movieId'], movies_metadata['title'
 # 超参数设置
 num_users = int(max(user_ids)) + 1
 num_movies = int(max(movie_ids)) + 1
-embedding_dim = 32   # 嵌入维度，用于表示用户和电影的向量表示的维度大小
-hidden_dim = 32    # 隐藏层维度，用于神经网络模型中隐藏层的大小
+embedding_dim = 64  # 嵌入维度，用于表示用户和电影的向量表示的维度大小
+hidden_dim = 64    # 隐藏层维度，用于神经网络模型中隐藏层的大小
 learning_rate = 0.001  # 学习率，用于控制模型在训练过程中参数更新的速度
-num_epochs = 20   # 训练轮数，表示模型在整个训练集上的训练次数
-batch_size = 128  # 批量大小，用于指定每个训练批次的样本数量
-
+num_epochs = 70  # 训练轮数，表示模型在整个训练集上的训练次数
+batch_size = 1024 # 批量大小，用于指定每个训练批次的样本数量
+# 添加早停机制
+best_test_rmse = np.inf
+patience = 5
+early_stopping_counter = 0
 print("----MOVIE RECOMMEND----")
 print('please input your userid( 1 -',num_users-1,')：')
 
@@ -50,29 +56,30 @@ def check():
         try:
             user_id = int(input())
             if 0 < user_id < num_users:
-                print("输入的id有效！")
-                break
+                return user_id
             else:
-                print("请输入正确的id！")
+                print("please input correct id")
         except ValueError as err:
-            print("请输入正确的id！")
+            print("please input correct id")
 
-check()
+user_id = check()
+
 print("----BEGIN TRAINING----")
+
 
 # 构建模型
 class Recommender(nn.Module):
-    def __init__(self, num_users, num_movies, embedding_dim, hidden_dim):
+    def __init__(self, num_users, num_movies, embedding_dim, hidden_dim, lambda_reg):
         super(Recommender, self).__init__()
         # 嵌入层构建
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.movie_embedding = nn.Embedding(num_movies, embedding_dim)
-        # 全连接层构建
+        # 线性层构建
         self.fc1 = nn.Linear(2 * embedding_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, 1)
         #ReLU激活函数，增加了模型的非线性能力
         self.relu = nn.ReLU()
-
+        self.lambda_reg = lambda_reg
     # 前向传播
     def forward(self, inputs):
         user_idx = inputs[:, 0]
@@ -83,15 +90,18 @@ class Recommender(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         x = torch.sigmoid(x)  # 添加sigmoid函数
-        return x.view(-1) * 5.0  # 将输出缩放到0到5之间
+        reg_loss = self.lambda_reg * (torch.norm(self.user_embedding.weight) + torch.norm(self.movie_embedding.weight))
+        return x.view(-1) * 5.0 + reg_loss  # 将输出缩放到0到5之间
 
 
 # 创建模型实例并将其移动到GPU上
-model = Recommender(num_users, num_movies, embedding_dim, hidden_dim).to(device)
+# 正则化强度参数设置
+lambda_reg = 0.001
+model = Recommender(num_users, num_movies, embedding_dim, hidden_dim, lambda_reg).to(device)
 
 # 定义损失函数和优化器
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=lambda_reg)
 
 # 将数据转换为PyTorch张量并移动到GPU上
 X_train = torch.LongTensor(X_train).to(device)
@@ -125,14 +135,31 @@ for epoch in range(num_epochs):
         outputs = model(X_test) # 通过向前传递测试集的输入数据，获取模型在测试集上的输出
         test_loss = criterion(outputs, y_test) # 计算模型在测试集上的输出与真实标签之间的损失
         test_rmse = np.sqrt(test_loss.item() / len(X_test))
+    linex.append(epoch)
+    liney.append(test_loss.cpu())
+    print(f'Epoch {epoch + 1}/{num_epochs} | Train RMSE: {train_rmse:.4f} | Test RMSE: {test_rmse:.4f} | Test loss: {test_loss:.4f}') # 监控训练过程中模型的性能表现
 
-    print(f'Epoch {epoch + 1}/{num_epochs} | Train RMSE: {train_rmse:.4f} | Test RMSE: {test_rmse:.4f} | Test lose: {test_loss:.4f}') # 监控训练过程中模型的性能表现
-
+    # 早停机制
+    if test_rmse < best_test_rmse:
+        best_test_rmse = test_rmse
+        early_stopping_counter = 0
+    else:
+        early_stopping_counter += 1
+        if early_stopping_counter >= patience:
+            print(f'Early stopping at epoch {epoch+1}')
+            break
 # 计算训练时长
 end_time = time.time()
 execution_time = end_time - start_time
 print(f'Execution Time: {execution_time:.2f} seconds')
 print()
+
+# 创建图形并绘制曲线
+plt.plot(linex, liney)
+# 添加标题和坐标轴标签
+plt.title("epoch - Test loss")
+plt.xlabel("epoch")
+plt.ylabel("Test loss")
 
 # 生成推荐
 user_ids = torch.LongTensor(user_ids).to(device)
@@ -147,3 +174,4 @@ print(f'Top {top_k} recommendations for User {user_id}:')
 for movie_id in top_movies:
     movie_title = movie_id_to_title.get(unique_movie_ids[movie_id])
     print(f'Movie Title: {movie_title} | Rating: {user_recommendations[movie_id]:.2f}')
+plt.show()
