@@ -42,7 +42,22 @@ num_epochs = 20   # 训练轮数，表示模型在整个训练集上的训练次
 batch_size = 128  # 批量大小，用于指定每个训练批次的样本数量
 
 print("----MOVIE RECOMMEND----")
-user_id = int(input("please input your userid(1-610)："))
+print('please input your userid( 1 -',num_users-1,')：')
+
+# 异常处理：检查输入id合法性
+def check():
+    while True:
+        try:
+            user_id = int(input())
+            if 0 < user_id < num_users:
+                print("输入的id有效！")
+                break
+            else:
+                print("请输入正确的id！")
+        except ValueError as err:
+            print("请输入正确的id！")
+
+check()
 print("----BEGIN TRAINING----")
 
 # 构建模型
@@ -124,7 +139,7 @@ user_ids = torch.LongTensor(user_ids).to(device)
 movie_ids = torch.LongTensor(movie_ids).to(device)
 recommendations = model(torch.column_stack((user_ids, movie_ids))).detach().cpu().numpy()
 
-# 打印某个用户的前十个推荐电影
+# 打印某个用户的前几个推荐电影
 top_k = 10
 user_recommendations = recommendations[user_ids.cpu() == user_id]
 top_movies = np.argsort(user_recommendations)[-top_k:][::-1]
